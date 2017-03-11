@@ -161,14 +161,29 @@ class ContentEntityExportForm extends FormBase {
    * Handles switching the export textarea.
    */
   public function updateExport($form, FormStateInterface $form_state) {
-    $name = $form_state->getValue('content_entity_type') . "." . $form_state->getValue('content_bundle_type');
+    $content_entity_type = $form_state->getValue('content_entity_type', 0);
+    $content_bundle_type = $form_state->getValue('content_bundle_type', 0);
+
+    if (empty($content_entity_type) || empty($content_bundle_type)) {
+      $form['export']['#value'] = "";
+      return $form['export'];
+    }
+
+    $name = $content_entity_type . "." . $content_bundle_type;
     // Read the raw data for this config name, encode it, and display it.
-    $form['export']['#value'] = "Content in yml format";
+    $form['export']['#value'] = $this->getExportedContentEntities();
     $form['export']['#description'] = $this->t(
       'Filename: %name',
       array('%name' => $name . '.yml')
     );
     return $form['export'];
+  }
+
+  /**
+   * @return string
+   */
+  public function getExportedContentEntities() {
+    return "Content in yml format";
   }
 
   /**
