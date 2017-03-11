@@ -1,9 +1,11 @@
-# This is the router item for listing all migration group entities.
-migrate_default_content.export.content:
-  path: '/admin/structure/migrate_default_content'
+# This is the router item for select exportable content entity.
+migrate_default_content.export:
+  path: '/admin/config/development/migrate_default_content/export/{content_entity_type}/{content_bundle_type}'
   defaults:
+    _title: 'Content entity export'
     _form: '\Drupal\migrate_default_content\Form\ContentEntityExportForm'
-    _title: 'Export content'
+    content_entity_type: NULL
+    content_bundle_type: NULL
   requirements:
     _permission: 'administer migrations'
   options:
