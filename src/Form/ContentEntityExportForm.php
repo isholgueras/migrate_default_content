@@ -2,19 +2,20 @@
 
 namespace Drupal\migrate_default_content\Form;
 
-use Drupal\Core\Config\StorageInterface;
 use Drupal\Core\Entity\ContentEntityType;
+use Drupal\Core\Entity\EntityInterface;
 use Drupal\Core\Entity\EntityManagerInterface;
 use Drupal\Core\Entity\EntityTypeInterface;
+use Drupal\Core\Entity\EntityTypeManagerInterface;
+use Drupal\Core\Entity\Query\QueryFactory;
 use Drupal\Core\Form\FormBase;
 use Drupal\Core\Form\FormState;
 use Drupal\Core\Form\FormStateInterface;
-use Drupal\Core\Serialization\Yaml;
-use Drupal\Core\StringTranslation\TranslatableMarkup;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Drupal\Component\Serialization\Yaml;
 
 /**
- * Provides a form for exporting a single configuration file.
+ * Provides a form for exporting some content entities in a file.
  */
 class ContentEntityExportForm extends FormBase {
 
@@ -26,29 +27,44 @@ class ContentEntityExportForm extends FormBase {
   protected $entityManager;
 
   /**
-   * The config storage.
+   * The entity type manager.
    *
-   * @var \Drupal\Core\Config\StorageInterface
+   * @var \Drupal\Core\Entity\EntityTypeManagerInterface
    */
-  protected $configStorage;
+  protected $entityTypeManager;
 
   /**
-   * Tracks the valid config entity type definitions.
+   *
+   * @var  \Drupal\Core\Entity\Query\QueryFactory
+   */
+  protected $entityQuery;
+
+  /**
+   * @var Yaml
+   */
+  protected $serializer;
+
+  /**
+   * Tracks the valid content entity type definitions.
    *
    * @var \Drupal\Core\Entity\EntityTypeInterface[]
    */
   protected $definitions = array();
 
   /**
-   * Constructs a new ConfigSingleImportForm.
+   * ContentEntityExportForm constructor.
    *
    * @param \Drupal\Core\Entity\EntityManagerInterface $entity_manager
-   *   The entity manager.
-   * @param \Drupal\Core\Config\StorageInterface $config_storage
-   *   The config storage.
+   * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager
+   * @param \Drupal\Core\Entity\Query\QueryFactory $entity_query
+   * @param \Drupal\Component\Serialization\Yaml $serializer
    */
-  public function __construct(EntityManagerInterface $entity_manager) {
+  public function __construct(EntityManagerInterface $entity_manager, EntityTypeManagerInterface $entity_type_manager, QueryFactory $entity_query, Yaml $serializer) {
     $this->entityManager = $entity_manager;
+    $this->entityTypeManager = $entity_type_manager;
+    $this->entityQuery = $entity_query;
+    $this->definitions = $this->entityTypeManager->getDefinitions();
+    $this->serializer = $serializer;
   }
 
   /**
@@ -56,7 +72,10 @@ class ContentEntityExportForm extends FormBase {
    */
   public static function create(ContainerInterface $container) {
     return new static(
-      $container->get('entity.manager')
+      $container->get('entity.manager'),
+      $container->get('entity_type.manager'),
+      $container->get('entity.query'),
+      $container->get('serialization.yaml')
     );
   }
 
@@ -108,8 +127,8 @@ class ContentEntityExportForm extends FormBase {
     if ($content_entity_type && $content_bundle_type) {
       $fake_form_state = (new FormState())->setValues(
         [
-          'config_type' => $content_entity_type,
-          'config_name' => $content_bundle_type,
+          'content_entity_type' => $content_entity_type,
+          'content_bundle_type' => $content_bundle_type,
         ]
       );
       $form['export'] = $this->updateExport($form, $fake_form_state);
@@ -118,13 +137,14 @@ class ContentEntityExportForm extends FormBase {
   }
 
   /**
+   * Returns and array of available content entities types.
+   *
    * @return array
    */
   public function getAvailableContentEntities() {
-    $entity_type_definations = \Drupal::entityTypeManager()->getDefinitions();
     $entity_types = [0 => "Select a content entity type"];
     /* @var $definition EntityTypeInterface */
-    foreach ($entity_type_definations as $entityTypeName => $definition) {
+    foreach ($this->definitions as $entityTypeName => $definition) {
 
       if ($definition instanceof ContentEntityType) {
         $entity_types[$entityTypeName] = $definition->getLabel();
@@ -133,6 +153,13 @@ class ContentEntityExportForm extends FormBase {
     return $entity_types;
   }
 
+  /**
+   * Return all available content bundles for a given entity type.
+   *
+   * @param null $content_entity_type
+   *
+   * @return array
+   */
   public function getAvailableContentBundles($content_entity_type = NULL) {
     if (empty($content_entity_type)) {
       return [];
@@ -148,7 +175,7 @@ class ContentEntityExportForm extends FormBase {
   }
 
   /**
-   * Handles switching the configuration type selector.
+   * Handles switching the Content bundle type selector.
    */
   public function updateContentBundleType($form, FormStateInterface $form_state) {
     $content_entity_type = $form_state->getValue('content_entity_type');
@@ -170,8 +197,8 @@ class ContentEntityExportForm extends FormBase {
     }
 
     $name = $content_entity_type . "." . $content_bundle_type;
-    // Read the raw data for this config name, encode it, and display it.
-    $form['export']['#value'] = $this->getExportedContentEntities();
+    // Read the raw data for this content entities, encode it, and display it.
+    $form['export']['#value'] = $this->getExportableContentEntities($content_entity_type, $content_bundle_type);
     $form['export']['#description'] = $this->t(
       'Filename: %name',
       array('%name' => $name . '.yml')
@@ -180,10 +207,21 @@ class ContentEntityExportForm extends FormBase {
   }
 
   /**
+   * Serialize all the content entities for an entity type and bundle and
+   * return the string.
+   *
    * @return string
    */
-  public function getExportedContentEntities() {
-    return "Content in yml format";
+  public function getExportableContentEntities($content_entity_type, $content_bundle_type) {
+    /**
+     * @var $entity_class_name EntityInterface
+     */
+    $content_ids = $this->entityQuery->get($content_entity_type)->range(0, 1)->execute();
+    $entity_definition = $this->definitions[$content_entity_type];
+    $entity_class_name = $entity_definition->getClass();
+    $content = $entity_class_name::loadMultiple($content_ids);
+    $serialized_data = ""; //$this->serializer::encode($content);
+    return $serialized_data;
   }
 
   /**
